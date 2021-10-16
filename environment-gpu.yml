@@ -1,0 +1,14 @@
+name: mesh-seg-gpu
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - cudatoolkit
+  - matplotlib
+  - numpy
+  - pytorch
+  - pytorch_geometric
+  - python=3.8
+  - pip
+  - trimesh

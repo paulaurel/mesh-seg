@@ -1,0 +1,11 @@
+name: mesh-seg
+channels:
+  - conda-forge
+dependencies:
+  - matplotlib
+  - numpy
+  - pytorch
+  - pytorch_geometric
+  - python=3.8
+  - pip
+  - trimesh

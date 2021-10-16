@@ -1,0 +1,15 @@
+name: mesh-seg-dev
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - black
+  - codespell
+  - flake8
+  - pydocstyle
+  - pylint
+  - pytest
+  - pytest-cov
+  - python=3.8
+  - pip
