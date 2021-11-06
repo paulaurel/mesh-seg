@@ -1,15 +1,16 @@
 from pathlib import Path
+from functools import cached_property
 
 import torch
+import numpy as np
 from torch_geometric.data import Data
-from torch_geometric.data import InMemoryDataset, extract_zip
+from torch_geometric.data import InMemoryDataset
 
 from .io import load_mesh
 
 
 class SegmentationFaust(InMemoryDataset):
-
-    seg_classes = dict(
+    segmentation_labels = dict(
         head=0,
         torso=1,
         left_arm=2,
@@ -24,39 +25,31 @@ class SegmentationFaust(InMemoryDataset):
         right_foot=11,
     )
 
-    def __init__(self, root, train: bool = True, transform=None, pre_transform=None):
-        super().__init__(root, transform, pre_transform)
+    def __init__(self, root, train: bool = True, pre_transform=None):
+        super().__init__(root, pre_transform)
         path = self.processed_paths[0] if train else self.processed_paths[1]
         self.data, self.slices = torch.load(path)
-
-    @property
-    def raw_file_names(self) -> str:
-        return "MPI-FAUST.zip"
 
     @property
     def processed_file_names(self) -> list:
         return ["training.pt", "test.pt"]
 
-    def download(self):
-        raise RuntimeError(
-            f"Dataset not found. Please download '{self.raw_file_names}'"
-            f" and move it to '{self.raw_dir}'")
+    @cached_property
+    def _segmentation_labels(self):
+        path_to_segmentation_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
+        segmentation_labels = np.load(str(path_to_segmentation_labels))["segmentation_labels"]
+        return torch.from_numpy(segmentation_labels).type(torch.int32)
+
+    def _get_mesh_filenames(self):
+        path_to_meshes = Path(self.root) / "training" / "registrations"
+        return path_to_meshes.glob("*.ply")
 
     def process(self):
-        extract_zip(self.raw_paths[0], self.raw_dir, log=False)
-        path_to_meshes = Path(self.raw_dir) / 'MPI-FAUST' / 'training' / 'registrations'
-        mesh_filenames = path_to_meshes.glob("*.ply")
-
         data_list = []
-        for mesh_filename in sorted(mesh_filenames):
+        for mesh_filename in sorted(self._get_mesh_filenames()):
             vertices, faces = load_mesh(mesh_filename)
-            data = Data(vertices=vertices, face=faces)
-            # TODO: @paulaurel fill data.semantic_labels with semantic class labels
-            data.semantic_labels = torch.randint(
-                low=0,
-                high=max(self.seg_classes.values()),
-                size=(data.vertices.shape[0], 1),
-            )
+            data = Data(x=vertices, face=faces)
+            data.segmentation_labels = self._get_segmentation_labels
             if self.pre_transform is not None:
                 data = self.pre_transform(data)
             data_list.append(data)
