@@ -3,11 +3,7 @@ import torch
 from torch_geometric.transforms import BaseTransform
 
 
-
 class NormalizeUnitSphere(BaseTransform):
-    """
-    """
-
     @staticmethod
     def _re_center(x):
         centroid = torch.mean(x, dim=0)
@@ -20,9 +16,7 @@ class NormalizeUnitSphere(BaseTransform):
 
     def __call__(self, data):
         if data.x is not None:
-            data.x = self._re_scale_to_unit_length(
-                self._re_center(data.x)
-            )
+            data.x = self._re_scale_to_unit_length(self._re_center(data.x))
 
         return data
 

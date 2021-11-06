@@ -36,9 +36,9 @@ class SegmentationFaust(InMemoryDataset):
 
     @cached_property
     def _segmentation_labels(self):
-        path_to_segmentation_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
-        segmentation_labels = np.load(str(path_to_segmentation_labels))["segmentation_labels"]
-        return torch.from_numpy(segmentation_labels).type(torch.int32)
+        path_to_seg_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
+        seg_labels = np.load(str(path_to_seg_labels))["segmentation_labels"]
+        return torch.from_numpy(seg_labels).type(torch.int32)
 
     def _get_mesh_filenames(self):
         path_to_meshes = Path(self.root) / "training" / "registrations"
