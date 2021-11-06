@@ -1,12 +1,13 @@
-
-
-
-
+import torch
+from torch_geometric.data import DataLoader
+from torch_geometric.transforms import FaceToEdge, Compose
+from dataset.faust import SegmentationFaust
+from dataset.pre_transform import NormalizeUnitSphere
+from models.network import MeshSeg
 
 def train(net, train_data, optimizer, loss_fn, device):
     net.train()
     cumulative_loss = 0.0
-
     for data in train_data:
         data = data.to(device)
         optimizer.zero_grad()
@@ -17,13 +18,12 @@ def train(net, train_data, optimizer, loss_fn, device):
         optimizer.step()
     return cumulative_loss / len(train_data)
 
-
 def accuracy(dataset, net, device):
     mean_accuracy=0
     for data in dataset:
         data = data.to(device)
         predictions = net(data)
-        predicted_seg_labels = predictions.argmax(dim=-1, keepdim=True) #dim +/- 1 both work?
+        predicted_seg_labels = predictions.argmax(dim=-1, keepdim=True) 
         if predicted_seg_labels.shape != data.segmentation_labels.shape:
             raise ValueError("Expected Shapes to be equivalent")
         correct_assignments = (predicted_seg_labels == data.segmentation_labels).sum()
@@ -34,19 +34,12 @@ def accuracy(dataset, net, device):
 @torch.no_grad()
 def test(net, train_data, test_data, device):
     net.eval()
-
     train_acc = accuracy(train_data, net, device)
     test_acc = accuracy(test_data, net, device)
-
     return train_acc, test_acc
 
 
 def main():
-
-
-    from torch_geometric.data import DataLoader
-import os
-
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     net = MeshSeg(
         in_features=3,
@@ -56,9 +49,12 @@ import os
         num_heads=8,
     ).to(device)
 
-    # 'SegmentationFaust' object has no attribute 'to'
-    train_data = segmentation_faust #.to(device)
-
+    pre_transform = Compose([FaceToEdge(remove_faces=False), NormalizeUnitSphere()])
+    root = "" # to do
+    train_data = SegmentationFaust(
+        root,
+        pre_transform=pre_transform,
+    )
     test_data = SegmentationFaust(
         root,
         train=False,
@@ -73,7 +69,6 @@ import os
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     loss_fn = torch.nn.CrossEntropyLoss()
-
 
     for epoch in range(1, nb_epochs):
         loss = train(net, train_loader, optimizer, loss_fn, device)
