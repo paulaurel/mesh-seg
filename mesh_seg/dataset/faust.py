@@ -10,7 +10,7 @@ from .io import load_mesh
 
 
 class SegmentationFaust(InMemoryDataset):
-    segmentation_labels = dict(
+    map_seg_label_to_id = dict(
         head=0,
         torso=1,
         left_arm=2,
@@ -37,19 +37,19 @@ class SegmentationFaust(InMemoryDataset):
     @cached_property
     def _segmentation_labels(self):
         path_to_seg_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
-        seg_labels = np.load(str(path_to_seg_labels))["segmentation_labels"]
+        seg_labels = np.load(str(path_to_seg_labels))["map_seg_label_to_id"]
         return torch.from_numpy(seg_labels).type(torch.int32)
 
-    def _get_mesh_filenames(self):
+    def _mesh_filenames(self):
         path_to_meshes = Path(self.root) / "training" / "registrations"
         return path_to_meshes.glob("*.ply")
 
     def process(self):
         data_list = []
-        for mesh_filename in sorted(self._get_mesh_filenames()):
+        for mesh_filename in sorted(self._mesh_filenames()):
             vertices, faces = load_mesh(mesh_filename)
             data = Data(x=vertices, face=faces)
-            data.segmentation_labels = self._get_segmentation_labels
+            data.segmentation_labels = self._segmentation_labels
             if self.pre_transform is not None:
                 data = self.pre_transform(data)
             data_list.append(data)
