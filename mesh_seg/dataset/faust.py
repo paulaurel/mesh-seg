@@ -1,5 +1,5 @@
 from pathlib import Path
-from functools import cached_property
+from functools import lru_cache
 
 import torch
 import numpy as np
@@ -34,11 +34,12 @@ class SegmentationFaust(InMemoryDataset):
     def processed_file_names(self) -> list:
         return ["training.pt", "test.pt"]
 
-    @cached_property
+    @property
+    @lru_cache(maxsize=32)
     def _segmentation_labels(self):
         path_to_seg_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
-        seg_labels = np.load(str(path_to_seg_labels))["map_seg_label_to_id"]
-        return torch.from_numpy(seg_labels).type(torch.int32)
+        seg_labels = np.load(str(path_to_seg_labels))["segmentation_labels"]
+        return torch.from_numpy(seg_labels).type(torch.int64)
 
     def _mesh_filenames(self):
         path_to_meshes = Path(self.root) / "training" / "registrations"

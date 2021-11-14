@@ -90,7 +90,7 @@ class MeshSeg(torch.nn.Module):
             num_heads=num_heads,
             apply_batch_norm=apply_batch_norm,
         )
-        _, final_conv_channel = conv_channels
+        *_, final_conv_channel = conv_channels
         self.final_projection = nn.Linear(final_conv_channel, num_classes)
 
     def forward(self, data):

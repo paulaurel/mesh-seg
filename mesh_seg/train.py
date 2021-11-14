@@ -47,7 +47,7 @@ def accuracy(predictions, gt_seg_labels):
 
 
 @torch.no_grad()
-def visualize_predictions(net, data, device, writer, map_seg_id_to_color):
+def visualize_predictions(net, data, device, writer, map_seg_id_to_color, epoch):
     def _map_seg_label_to_color(seg_ids, map_seg_id_to_color):
         return torch.vstack(
             [map_seg_id_to_color[int(seg_ids[idx])] for idx in range(seg_ids.shape[0])]
@@ -59,9 +59,10 @@ def visualize_predictions(net, data, device, writer, map_seg_id_to_color):
     mesh_colors = _map_seg_label_to_color(predicted_seg_labels, map_seg_id_to_color)
     writer.add_mesh(
         "segmentation/test",
-        vertices=data.x,
-        colors=mesh_colors,
-        faces=data.faces.t()
+        vertices=data.x.unsqueeze(0),
+        colors=mesh_colors.unsqueeze(0),
+        faces=data.face.t().unsqueeze(0),
+        global_step=epoch,
     )
 
 
@@ -93,7 +94,7 @@ def main():
     ).to(device)
 
     pre_transform = Compose([FaceToEdge(remove_faces=False), NormalizeUnitSphere()])
-    root = "" # to do
+    root = "/home/diepaul/cs224-project/MPI-FAUST"
     train_data = SegmentationFaust(
         root,
         pre_transform=pre_transform,
@@ -112,19 +113,24 @@ def main():
     train_loader = DataLoader(train_data,  shuffle=True)
     test_loader = DataLoader(test_data, shuffle=False)
 
-    lr = 0.01
-    num_epochs = 10
+    lr = 0.001
+    num_epochs = 1000
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     loss_fn = torch.nn.CrossEntropyLoss()
 
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir="/home/diepaul/cs224-project/logs")
 
     for epoch in range(num_epochs):
+        print(f"Epoch: {epoch}")
         train_loss = train(net, train_loader, optimizer, loss_fn, device)
         train_acc, test_acc = test(net, train_loader, test_loader, device)
-        visualize_predictions(net, next(test_data), device, writer, map_seg_id_to_color)
+        if epoch % 20 == 0:
+            visualize_predictions(net, test_data[0], device, writer, map_seg_id_to_color, epoch)
         writer.add_scalar('mean-ce-loss/train', train_loss, epoch)
         writer.add_scalar('accuracy/train', train_acc, epoch)
         writer.add_scalar('accuracy/test', test_acc, epoch)
 
+
+if __name__ == "__main__":
+    main()
