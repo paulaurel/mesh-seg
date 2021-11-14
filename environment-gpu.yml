@@ -4,11 +4,11 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - cudatoolkit
+  - cudatoolkit=11.1
   - matplotlib
   - numpy
-  - pytorch
-  - pytorch_geometric
-  - python=3.8
+  - pytorch=1.9.0
+  - python=3.7.12
   - pip
+  - tensorboard
   - trimesh
