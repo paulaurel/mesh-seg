@@ -62,14 +62,14 @@ class GraphFeatureEncoder(torch.nn.Module):
                 [nn.BatchNorm1d(channel) for channel in first_conv_channels]
             )
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, xyz_features=None):
         *first_conv_layers, final_conv_layer = self.conv_layers
         for conv_layer, batch_layer in zip(first_conv_layers, self.batch_layers):
-            x = conv_layer(x, edge_index)
+            x = conv_layer(x, edge_index, xyz_features)
             x = F.relu(x)
             if batch_layer is not None:
                 x = batch_layer(x)
-        return final_conv_layer(x, edge_index)
+        return final_conv_layer(x, edge_index, xyz_features)
 
 
 class MeshSeg(torch.nn.Module):
@@ -94,7 +94,7 @@ class MeshSeg(torch.nn.Module):
         self.final_projection = nn.Linear(final_conv_channel, num_classes)
 
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = self.input_encoder(x)
-        x = self.gnn(x, edge_index)
+        xyz_features, edge_index = data.x, data.edge_index
+        x = self.input_encoder(xyz_features)
+        x = self.gnn(x, edge_index, xyz_features)
         return self.final_projection(x)
