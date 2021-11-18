@@ -31,7 +31,7 @@ class FeatureSteeredConvolution(MessagePassing):
             bias=False,
         )
         self.u = torch.nn.Linear(
-            in_features=in_channels + skip_attention_dim if skip_attention else in_channels,
+            in_features=skip_attention_dim if skip_attention else in_channels,
             out_features=num_heads,
             bias=False,
         )
@@ -73,12 +73,6 @@ class FeatureSteeredConvolution(MessagePassing):
         return out if self.bias is None else out + self.bias
 
     def _compute_attention_weights(self, x_i, x_j):
-        _in_channels = x_j.shape[-1] - 3 if self.skip_attention else x_j.shape[-1]
-        if _in_channels != self.in_channels:
-            raise ValueError(
-                f"Expected input features with {self.in_channels} channels."
-                f" Instead received features with {_in_channels} channels."
-            )
         if self.v is None:
             attention_logits = self.u(x_i - x_j) + self.c
         else:
@@ -86,7 +80,7 @@ class FeatureSteeredConvolution(MessagePassing):
         return F.softmax(attention_logits, dim=1)
 
     def message(self, x_i, x_j):
-        attention_weights = self._compute_attention_weights(x_i, x_j)
+        attention_weights = self._compute_attention_weights(x_i[:, -3:], x_j[:, -3:])
         x_j = x_j[:, :-3] if self.skip_attention else x_j
         x_j = self.linear(x_j).view(-1, self.num_heads, self.out_channels)
         return (attention_weights.view(-1, self.num_heads, 1) * x_j).sum(dim=1)

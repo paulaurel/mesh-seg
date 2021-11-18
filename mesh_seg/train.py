@@ -113,7 +113,7 @@ def main():
     train_loader = DataLoader(train_data,  shuffle=True)
     test_loader = DataLoader(test_data, shuffle=False)
 
-    lr = 0.0005
+    lr = 0.001
     num_epochs = 1000
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
