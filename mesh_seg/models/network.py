@@ -93,8 +93,16 @@ class MeshSeg(torch.nn.Module):
         *_, final_conv_channel = conv_channels
         self.final_projection = nn.Linear(final_conv_channel, num_classes)
 
+    def _get_encoding(self, x, edge_index):
+        return self.gnn(self.input_encoder(x), edge_index)
+
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = self.input_encoder(x)
-        x = self.gnn(x, edge_index)
+        ref_data, edge_index_ref = data.ref, data.edge_index_ref
+        query_data, edge_index_query = data.query, data.edge_index_query
+
+        ref_encoding = self._get_encoding(ref_data, edge_index_ref)
+        query_encoding = self._get_encoding(query_data, edge_index_query)
+
+        assignment_matrix = torch.einsum('bdn,bdm->bnm', ref_encoding, query_encoding)
+
         return self.final_projection(x)
