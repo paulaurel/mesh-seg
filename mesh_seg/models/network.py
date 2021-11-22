@@ -1,22 +1,9 @@
-from itertools import tee
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .graph_conv.feat_steer_conv import FeatureSteeredConvolution
-
-
-def pairwise(iterable):
-    """Iterate over all pairs of consecutive items in a list.
-
-    Notes
-    -----
-        [s0, s1, s2, s3, ...] -> (s0,s1), (s1,s2), (s2, s3), ...
-    """
-    a, b = tee(iterable)
-    next(b, None)
-    return zip(a, b)
+from ..utils import pairwise
+from .graph_convolutions.feat_steer_conv import FeatureSteeredConvolution
 
 
 def get_conv_layers(channels: list, conv, conv_params):
@@ -25,6 +12,19 @@ def get_conv_layers(channels: list, conv, conv_params):
         conv(in_ch, out_ch, **conv_params) for in_ch, out_ch in pairwise(channels)
     ]
     return conv_layers
+
+
+def get_mlp_layers(channels: list, activation, output_activation=nn.Identity):
+    """Define basic multilayered perceptron network architecture."""
+    layers = []
+    *intermediate_layer_definitions, final_layer_definition = pairwise(channels)
+
+    for in_ch, out_ch in intermediate_layer_definitions:
+        intermediate_layer = nn.Linear(in_ch, out_ch)
+        layers += [intermediate_layer, activation()]
+
+    layers += [nn.Linear(*final_layer_definition), output_activation()]
+    return nn.Sequential(*layers)
 
 
 class GraphFeatureEncoder(torch.nn.Module):
