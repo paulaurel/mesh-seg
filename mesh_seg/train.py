@@ -1,64 +1,64 @@
 import torch
+import numpy as np
+import torch.nn.functional as F
 from torch_geometric.data import DataLoader
-from torch_geometric.transforms import FaceToEdge, Compose
-from dataset.faust import SegmentationFaust
-from dataset.pre_transform import NormalizeUnitSphere
-from models.network import MeshSeg
 from torch.utils.tensorboard import SummaryWriter
+from torch_geometric.transforms import FaceToEdge, Compose
 
-
-SEGMENTATION_COLORS = dict(
-    head=torch.tensor([255, 0, 0], dtype=torch.int),
-    torso=torch.tensor([255, 0, 255], dtype=torch.int),
-    left_arm=torch.tensor([255, 255, 0], dtype=torch.int),
-    left_hand=torch.tensor([255, 128, 0], dtype=torch.int), 
-    right_arm=torch.tensor([0, 255, 0], dtype=torch.int),
-    right_hand=torch.tensor([0, 255, 128], dtype=torch.int),
-    left_upper_leg=torch.tensor([0, 128, 255], dtype=torch.int),
-    left_lower_leg=torch.tensor([0, 255, 255], dtype=torch.int),
-    left_foot=torch.tensor([0, 0, 255], dtype=torch.int),
-    right_upper_leg=torch.tensor([128, 0, 255], dtype=torch.int),
-    right_lower_leg=torch.tensor([128, 255, 0], dtype=torch.int),
-    right_foot=torch.tensor([255, 0, 128], dtype=torch.int)
+from metrics import (
+    evaluate_assignment_error,
+    plot_assignment_error,
+    compute_assignment_accuracy,
+    compute_class_label_accuracy,
 )
+from utils import groupwise
+from models.network import MeshCorrSeg
+from dataset.pre_transform import NormalizeUnitSphere
+from dataset.faust import SegmentationFaust, SEGMENTATION_COLORS
 
 
-def train(net, train_data, optimizer, loss_fn, device):
-    net.train()
+def training_loop(net, train_data_loader: DataLoader, optimizer, multitask_loss_fn, loss_weights, device):
+    net.training_loop()
     cumulative_loss = 0.0
-    for data in train_data:
-        data = data.to(device)
+    for data_s, data_t in groupwise(train_data_loader):
+        data_s, data_t = [data.to(device) for data in (data_s, data_t)]
         optimizer.zero_grad()
-        out = net(data)
-        loss = loss_fn(out, data.segmentation_labels.squeeze())
+        output = net(data_s, data_t)
+        loss = multitask_loss_fn(*output, data_s, data_t, loss_weights)
         loss.backward()
         cumulative_loss += loss.item()
         optimizer.step()
-    return cumulative_loss / len(train_data)
+    return cumulative_loss / len(train_data_loader)
 
 
-def accuracy(predictions, gt_seg_labels): 
-    predicted_seg_labels = predictions.argmax(dim=-1, keepdim=True)
-    if predicted_seg_labels.shape != gt_seg_labels.shape:
-        raise ValueError("Expected Shapes to be equivalent")
-    correct_assignments = (predicted_seg_labels == gt_seg_labels).sum()
-    num_assignemnts = predicted_seg_labels.shape[0]
-    return correct_assignments / num_assignemnts
+def multitask_loss(assignment_matrix, pred_class_labels_s, pred_class_labels_t, data_s, data_t, weighting):
+    def _segmentation_loss():
+        seg_loss_s = F.cross_entropy(
+            input=pred_class_labels_s,
+            target=data_s.segmentation_labels.squeeze(),
+        )
+        seg_loss_t = F.cross_entropy(
+            input=pred_class_labels_t,
+            target=data_t.segmentation_labels.squeeze(),
+        )
+        return seg_loss_s + seg_loss_t
+
+    def _correspondence_loss():
+        gt_assignment = torch.arange(assignment_matrix.shape[0], device=assignment_matrix.device)
+        return F.cross_entropy(assignment_matrix, gt_assignment)
+
+    return sum(loss * weight for loss, weight in zip((_segmentation_loss(), _correspondence_loss()), weighting))
 
 
-@torch.no_grad()
-def visualize_predictions(net, data, device, writer, map_seg_id_to_color, epoch):
-    def _map_seg_label_to_color(seg_ids, map_seg_id_to_color):
+def _class_predictions_to_summary(data, predicted_class_labels, writer, map_seg_id_to_color, epoch, label_idx):
+    def _map_class_label_to_color(seg_ids, map_seg_id_to_color):
         return torch.vstack(
             [map_seg_id_to_color[int(seg_ids[idx])] for idx in range(seg_ids.shape[0])]
         )
 
-    data = data.to(device)
-    predictions = net(data)
-    predicted_seg_labels = predictions.argmax(dim=-1, keepdim=True)
-    mesh_colors = _map_seg_label_to_color(predicted_seg_labels, map_seg_id_to_color)
+    mesh_colors = _map_class_label_to_color(predicted_class_labels, map_seg_id_to_color)
     writer.add_mesh(
-        "segmentation/test",
+        f"segmentation/test_{label_idx:02d}",
         vertices=data.x.unsqueeze(0),
         colors=mesh_colors.unsqueeze(0),
         faces=data.face.t().unsqueeze(0),
@@ -66,37 +66,83 @@ def visualize_predictions(net, data, device, writer, map_seg_id_to_color, epoch)
     )
 
 
-def evaluate_network(dataset, net, device):
-    mean_accuracy = 0
-    for data in dataset:
-        data = data.to(device)
-        predictions = net(data)
-        mean_accuracy += accuracy(predictions, data.segmentation_labels)
-    return mean_accuracy / len(dataset)
+@torch.no_grad()
+def visualize_class_predictions(net, data_s, data_t, device, writer, map_seg_id_to_color, epoch):
+    def _predicted_class_labels(soft_predictions):
+        return soft_predictions.argmax(dim=-1, keepdim=True)
+
+    _, soft_class_labels_s, soft_class_labels_t = net(data_s, data_t)
+    data_s, data_t = [data.to(device) for data in (data_s, data_t)]
+    _class_predictions_to_summary(
+        data=data_s,
+        predicted_class_labels=_predicted_class_labels(soft_class_labels_s),
+        writer=writer,
+        map_seg_id_to_color=map_seg_id_to_color,
+        epoch=epoch,
+        label_idx=0,
+    )
+    _class_predictions_to_summary(
+        data=data_s,
+        predicted_class_labels=_predicted_class_labels(soft_class_labels_s),
+        writer=writer,
+        map_seg_id_to_color=map_seg_id_to_color,
+        epoch=epoch,
+        label_idx=1,
+    )
 
 
 @torch.no_grad()
-def test(net, train_data, test_data, device):
+def evaluate_metrics(data_loader, net, device, writer, epoch, dataset_label):
+    class_accuracies, assignment_accuracies, assignment_errors, assignment_aucs = [], [], [], []
+    for data_s, data_t in groupwise(data_loader):
+        data_s, data_t = [data.to(device) for data in (data_s, data_t)]
+        assignment_matrix, pred_class_labels_s, pred_class_labels_t = net(data_s, data_t)
+
+        class_accuracies.append(compute_class_label_accuracy(pred_class_labels_s, data_s.segmentation_labels))
+        class_accuracies.append(compute_class_label_accuracy(pred_class_labels_t, data_t.segmentation_labels))
+
+        pred_assignment = assignment_matrix.max(1).indices.squeeze()
+        assignment_accuracies.append(compute_assignment_accuracy(pred_assignment))
+        assignment_error, assignment_auc = evaluate_assignment_error(
+            points=data_s.x.numpy(),
+            faces=data_s.face.numpy(),
+            pred_idx=pred_assignment.numpy(),
+        )
+        assignment_errors.append(assignment_error)
+        assignment_aucs.append(assignment_auc)
+
+    writer.add_scalar(f"seg_class_accuracy/{dataset_label}", np.mean(class_accuracies), epoch)
+    writer.add_scalar(f"assignment_accuracy/{dataset_label}", np.mean(assignment_accuracies), epoch)
+
+    assignment_error_plot = plot_assignment_error(np.mean(assignment_errors, axis=1), np.mean(assignment_aucs))
+    writer.add_image(f"assignment_error/{dataset_label}", assignment_error_plot)
+
+
+@torch.no_grad()
+def perform_evaluation(net, train_loader, test_loader, device, writer, epoch):
     net.eval()
-    train_acc = evaluate_network(train_data, net, device)
-    test_acc = evaluate_network(test_data, net, device)
-    return train_acc, test_acc
+    evaluate_metrics(train_loader, net, device, writer, epoch, dataset_label="train")
+    evaluate_metrics(test_loader, net, device, writer, epoch, dataset_label="test")
 
 
 def main():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    net = MeshSeg(
+    net = MeshCorrSeg(
         in_features=3,
-        encoder_features=16,
-        num_classes=12,
+        num_seg_classes=12,
+        encoder_channels=[8, 16],
         conv_channels=[32, 64, 128, 64],
+        class_decoder_channels=[32, 12],
+        assignment_decoder_channels=[64, 128],
         num_heads=8,
+        sinkhorn_iterations=5,
     ).to(device)
 
     pre_transform = Compose([FaceToEdge(remove_faces=False), NormalizeUnitSphere()])
     root = "/home/diepaul/cs224-project/MPI-FAUST"
     train_data = SegmentationFaust(
         root,
+        train=True,
         pre_transform=pre_transform,
     )
     test_data = SegmentationFaust(
@@ -114,22 +160,24 @@ def main():
     test_loader = DataLoader(test_data, shuffle=False)
 
     lr = 0.001
-    num_epochs = 1000
+    num_epochs = 20000
 
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
-    loss_fn = torch.nn.CrossEntropyLoss()
 
     writer = SummaryWriter(log_dir="/home/diepaul/cs224-project/logs")
-
+    loss_weights = [0.5, 0.0]
     for epoch in range(num_epochs):
         print(f"Epoch: {epoch}")
-        train_loss = train(net, train_loader, optimizer, loss_fn, device)
-        train_acc, test_acc = test(net, train_loader, test_loader, device)
-        if epoch % 20 == 0:
-            visualize_predictions(net, test_data[0], device, writer, map_seg_id_to_color, epoch)
+
+        if epoch == 1000:
+            loss_weights = [0.5, 0.2]
+
+        train_loss = training_loop(net, train_loader, optimizer, multitask_loss, device, loss_weights)
         writer.add_scalar('mean-ce-loss/train', train_loss, epoch)
-        writer.add_scalar('accuracy/train', train_acc, epoch)
-        writer.add_scalar('accuracy/test', test_acc, epoch)
+
+        if epoch % 50 == 0:
+            perform_evaluation(net, train_loader, test_loader, device, writer, epoch)
+            visualize_class_predictions(net, test_data[0], test_data[1], device, writer, map_seg_id_to_color, epoch)
 
 
 if __name__ == "__main__":
