@@ -8,6 +8,21 @@ from torch_geometric.data import InMemoryDataset
 
 from .io import load_mesh
 
+SEGMENTATION_COLORS = dict(
+    head=torch.tensor([255, 0, 0], dtype=torch.int),
+    torso=torch.tensor([255, 0, 255], dtype=torch.int),
+    left_arm=torch.tensor([255, 255, 0], dtype=torch.int),
+    left_hand=torch.tensor([255, 128, 0], dtype=torch.int),
+    right_arm=torch.tensor([0, 255, 0], dtype=torch.int),
+    right_hand=torch.tensor([0, 255, 128], dtype=torch.int),
+    left_upper_leg=torch.tensor([0, 128, 255], dtype=torch.int),
+    left_lower_leg=torch.tensor([0, 255, 255], dtype=torch.int),
+    left_foot=torch.tensor([0, 0, 255], dtype=torch.int),
+    right_upper_leg=torch.tensor([128, 0, 255], dtype=torch.int),
+    right_lower_leg=torch.tensor([128, 255, 0], dtype=torch.int),
+    right_foot=torch.tensor([255, 0, 128], dtype=torch.int)
+)
+
 
 class SegmentationFaust(InMemoryDataset):
     map_seg_label_to_id = dict(
