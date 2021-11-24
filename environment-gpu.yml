@@ -1,14 +1,17 @@
 name: mesh-seg-gpu
 channels:
   - pytorch
+  - nvidia
   - conda-forge
-  - defaults
 dependencies:
-  - cudatoolkit
+  - cudatoolkit=11.3
   - matplotlib
   - numpy
   - pytorch
-  - pytorch_geometric
-  - python=3.8
+  - python=3.7
   - pip
   - trimesh
+  - pip:
+    - torch-scatter -f https://data.pyg.org/whl/torch-1.10.0+cu113.html
+    - torch-sparse -f https://data.pyg.org/whl/torch-1.10.0+cu113.html
+    - torch-geometric
