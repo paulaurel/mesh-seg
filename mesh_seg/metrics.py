@@ -1,15 +1,14 @@
-from io import BytesIO
 from multiprocessing import Pool
-
-import torch
 from joblib import Memory, cpu_count
 
-import PIL
+import torch
 import numpy as np
 import potpourri3d as pp3d
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 
-CACHE_DIR = '/content/sample_data'
+
+CACHE_DIR = "/home/diepaul/mesh-seg-project/geodesic_cache"
 CACHE_MEMORY = Memory(CACHE_DIR, verbose=0)
 
 GEO_SOLVER = None
@@ -70,7 +69,7 @@ def evaluate_assignment_error(points, faces, pred_idx):
 
 
 def plot_assignment_error(assignment_accuracy, assignment_auc):
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6))
     plt.plot(
         np.linspace(0.0, 1.0, len(assignment_accuracy), endpoint=True),
         assignment_accuracy,
@@ -81,15 +80,15 @@ def plot_assignment_error(assignment_accuracy, assignment_auc):
         f"Correspondence Accuracy vs. Geodesic Error"
         f" (AUC: {assignment_auc:.2f})"
     )
-    buffer = BytesIO()
-    plt.savefig(buffer, format="jpeg")
-    buffer.seek(0)
-    return np.asarray(PIL.Image.open(buffer))
+    # buffer = BytesIO()
+    # plt.savefig(buffer, format="jpeg")
+    # buffer.seek(0)
+    return fig
 
 
 def compute_assignment_accuracy(pred_assignment):
-    gt_assignment = torch.arange(pred_assignment.shape[1], device=pred_assignment.device)
-    return torch.mean(pred_assignment.squeeze() == gt_assignment)
+    gt_assignment = torch.arange(pred_assignment.shape[0], device=pred_assignment.device)
+    return torch.sum(pred_assignment == gt_assignment) / gt_assignment.shape[0]
 
 
 def compute_class_label_accuracy(predictions, gt_seg_labels):
@@ -99,3 +98,15 @@ def compute_class_label_accuracy(predictions, gt_seg_labels):
     num_correct_class_label_assignments = (predicted_class_labels == gt_seg_labels).sum()
     tot_num_class_label_assignments = predicted_class_labels.shape[0]
     return num_correct_class_label_assignments / tot_num_class_label_assignments
+
+
+def compute_normalized_entropy(logits):
+    prob_dist, log_prob_dist = F.softmax(logits, dim=1), F.log_softmax(logits, dim=1)
+    max_entropy = torch.log(torch.tensor(logits.shape[1]))
+    return torch.sum(-prob_dist * log_prob_dist, dim=1) / max_entropy
+
+
+def map_entropy_to_color(normalized_entropy):
+    cmap = plt.cm.get_cmap("jet", 1000)
+    colors = cmap(normalized_entropy.detach().cpu().numpy())[:, :3] * 255
+    return torch.from_numpy(colors).type(torch.int32)

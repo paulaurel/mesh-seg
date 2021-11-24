@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import pairwise
+from mesh_seg.utils import pairwise
 from .sinkhorn import solve_log_optimal_transport
 from .graph_convolutions.feat_steer_conv import FeatureSteeredConvolution
 
