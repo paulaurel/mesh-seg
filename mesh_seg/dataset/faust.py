@@ -1,5 +1,5 @@
 from pathlib import Path
-from functools import cached_property
+from functools import lru_cache
 
 import torch
 import numpy as np
@@ -7,6 +7,21 @@ from torch_geometric.data import Data
 from torch_geometric.data import InMemoryDataset
 
 from .io import load_mesh
+
+SEGMENTATION_COLORS = dict(
+    head=torch.tensor([255, 0, 0], dtype=torch.int),
+    torso=torch.tensor([255, 0, 255], dtype=torch.int),
+    left_arm=torch.tensor([255, 255, 0], dtype=torch.int),
+    left_hand=torch.tensor([255, 128, 0], dtype=torch.int),
+    right_arm=torch.tensor([0, 255, 0], dtype=torch.int),
+    right_hand=torch.tensor([0, 255, 128], dtype=torch.int),
+    left_upper_leg=torch.tensor([0, 128, 255], dtype=torch.int),
+    left_lower_leg=torch.tensor([0, 255, 255], dtype=torch.int),
+    left_foot=torch.tensor([0, 0, 255], dtype=torch.int),
+    right_upper_leg=torch.tensor([128, 0, 255], dtype=torch.int),
+    right_lower_leg=torch.tensor([128, 255, 0], dtype=torch.int),
+    right_foot=torch.tensor([255, 0, 128], dtype=torch.int)
+)
 
 
 class SegmentationFaust(InMemoryDataset):
@@ -34,11 +49,12 @@ class SegmentationFaust(InMemoryDataset):
     def processed_file_names(self) -> list:
         return ["training.pt", "test.pt"]
 
-    @cached_property
+    @property
+    @lru_cache(maxsize=32)
     def _segmentation_labels(self):
         path_to_seg_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
-        seg_labels = np.load(str(path_to_seg_labels))["map_seg_label_to_id"]
-        return torch.from_numpy(seg_labels).type(torch.int32)
+        seg_labels = np.load(str(path_to_seg_labels))["segmentation_labels"]
+        return torch.from_numpy(seg_labels).type(torch.int64)
 
     def _mesh_filenames(self):
         path_to_meshes = Path(self.root) / "training" / "registrations"
