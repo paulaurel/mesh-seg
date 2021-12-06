@@ -3,6 +3,7 @@ from itertools import tee
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.nn import MessagePassing
 
 from .graph_conv.feat_steer_conv import FeatureSteeredConvolution
 
@@ -19,7 +20,7 @@ def pairwise(iterable):
     return zip(a, b)
 
 
-def get_conv_layers(channels: list, conv: torch.nn.Module, conv_params: dict):
+def get_conv_layers(channels: list, conv: MessagePassing, conv_params: dict):
     """Define basic multilayered graph convolution network architecture.
 
     Parameters
@@ -42,7 +43,21 @@ def get_conv_layers(channels: list, conv: torch.nn.Module, conv_params: dict):
     return conv_layers
 
 
+def get_mlp_layers(channels: list, activation, output_activation=nn.Identity):
+    """Define basic multilayered perceptron network."""
+    layers = []
+    *intermediate_layer_definitions, final_layer_definition = pairwise(channels)
+
+    for in_ch, out_ch in intermediate_layer_definitions:
+        intermediate_layer = nn.Linear(in_ch, out_ch)
+        layers += [intermediate_layer, activation()]
+
+    layers += [nn.Linear(*final_layer_definition), output_activation()]
+    return nn.Sequential(*layers)
+
+
 class GraphFeatureEncoder(torch.nn.Module):
+    """Graph neural network consisting of sequentially stacked graph convolutions."""
     def __init__(
         self,
         in_features,
@@ -92,13 +107,18 @@ class MeshSeg(torch.nn.Module):
         self,
         in_features,
         encoder_features,
-        num_classes,
         conv_channels,
+        encoder_channels,
+        decoder_channels,
+        num_classes,
         num_heads,
         apply_batch_norm=True,
     ):
         super().__init__()
-        self.input_encoder = nn.Linear(in_features, encoder_features)
+        self.input_encoder = get_mlp_layers(
+            channels=[in_features] + encoder_channels,
+            activation=nn.ReLU,
+        )
         self.gnn = GraphFeatureEncoder(
             in_features=encoder_features,
             conv_channels=conv_channels,
@@ -106,7 +126,11 @@ class MeshSeg(torch.nn.Module):
             apply_batch_norm=apply_batch_norm,
         )
         *_, final_conv_channel = conv_channels
-        self.final_projection = nn.Linear(final_conv_channel, num_classes)
+
+        self.final_projection = get_mlp_layers(
+            [final_conv_channel] + decoder_channels + [num_classes],
+            activation=nn.ReLU,
+        )
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index

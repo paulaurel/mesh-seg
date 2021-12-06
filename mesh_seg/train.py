@@ -118,9 +118,12 @@ def main():
     net = MeshSeg(
         in_features=3,
         encoder_features=16,
-        num_classes=12,
         conv_channels=[32, 64, 128, 64],
-        num_heads=8,
+        encoder_channels=[16],
+        decoder_channels=[32],
+        num_classes=12,
+        num_heads=12,
+        apply_batch_norm=True,
     ).to(device)
 
     pre_transform = Compose([FaceToEdge(remove_faces=False), NormalizeUnitSphere()])
