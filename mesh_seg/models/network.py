@@ -19,8 +19,23 @@ def pairwise(iterable):
     return zip(a, b)
 
 
-def get_conv_layers(channels: list, conv, conv_params):
-    """Define basic multilayered graph convolution network architecture."""
+def get_conv_layers(channels: list, conv: torch.nn.Module, conv_params: dict):
+    """Define basic multilayered graph convolution network architecture.
+
+    Parameters
+    ----------
+    channels: list
+        List of integers specifying the convolution channels.
+    conv: torch.nn.Module
+        Convolution layer.
+    conv_params: dict
+        Dictionary specifying convolution parameters.
+
+    Returns
+    -------
+    list
+        List of convolutions with the specified channels.
+    """
     conv_layers = [
         conv(in_ch, out_ch, **conv_params) for in_ch, out_ch in pairwise(channels)
     ]

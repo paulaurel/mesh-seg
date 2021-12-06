@@ -37,13 +37,26 @@ def train(net, train_data, optimizer, loss_fn, device):
     return cumulative_loss / len(train_data)
 
 
-def accuracy(predictions, gt_seg_labels): 
+def accuracy(predictions, gt_seg_labels):
+    """Compute accuracy of predicted segmentation labels.
+
+    Parameters
+    ----------
+    predictions: [|V|, num_classes]
+        Soft predictions of segmentation labels.
+    gt_seg_labels: [|V|]
+        Ground truth segmentations labels.
+    Returns
+    -------
+    float
+        Accuracy of predicted segmentation labels.
+    """
     predicted_seg_labels = predictions.argmax(dim=-1, keepdim=True)
     if predicted_seg_labels.shape != gt_seg_labels.shape:
         raise ValueError("Expected Shapes to be equivalent")
     correct_assignments = (predicted_seg_labels == gt_seg_labels).sum()
     num_assignemnts = predicted_seg_labels.shape[0]
-    return correct_assignments / num_assignemnts
+    return float(correct_assignments / num_assignemnts)
 
 
 @torch.no_grad()
@@ -66,20 +79,37 @@ def visualize_predictions(net, data, device, writer, map_seg_id_to_color, epoch)
     )
 
 
-def evaluate_network(dataset, net, device):
-    mean_accuracy = 0
+def evaluate_performance(dataset, net, device):
+    """Evaluate network performance on given dataset.
+
+    Parameters
+    ----------
+    dataset: DataLoader
+        Dataset on which the network is evaluated on.
+    net: torch.nn.Module
+        Trained network.
+    device: str
+        Device on which the network is located.
+
+    Returns
+    -------
+    float:
+        Mean accuracy of the network's prediction on
+        the provided dataset.
+    """
+    prediction_accuracies = []
     for data in dataset:
         data = data.to(device)
         predictions = net(data)
-        mean_accuracy += accuracy(predictions, data.segmentation_labels)
-    return mean_accuracy / len(dataset)
+        prediction_accuracies.append(accuracy(predictions, data.segmentation_labels))
+    return sum(prediction_accuracies) / len(prediction_accuracies)
 
 
 @torch.no_grad()
 def test(net, train_data, test_data, device):
     net.eval()
-    train_acc = evaluate_network(train_data, net, device)
-    test_acc = evaluate_network(test_data, net, device)
+    train_acc, test_acc = evaluate_performance(train_data, net, device)
+    test_acc = evaluate_performance(test_data, net, device)
     return train_acc, test_acc
 
 

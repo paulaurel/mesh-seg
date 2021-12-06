@@ -10,6 +10,7 @@ from .io import load_mesh
 
 
 class SegmentationFaust(InMemoryDataset):
+    """A segmented version of the MPI FAUST humanoid mesh dataset."""
     map_seg_label_to_id = dict(
         head=0,
         torso=1,
@@ -26,6 +27,19 @@ class SegmentationFaust(InMemoryDataset):
     )
 
     def __init__(self, root, train: bool = True, pre_transform=None):
+        """
+        Parameters
+        ----------
+        root: PathLike
+            Root directory where the dataset should be saved.
+        train: bool
+            Whether to load training data or test data.
+        pre_transform: Optional[Callable]
+            A function that takes in a torch_geometric.data.Data object
+            and outputs a transformed version. Note that the transformed
+            data object will be saved to disk.
+
+        """
         super().__init__(root, pre_transform)
         path = self.processed_paths[0] if train else self.processed_paths[1]
         self.data, self.slices = torch.load(path)
@@ -37,15 +51,18 @@ class SegmentationFaust(InMemoryDataset):
     @property
     @lru_cache(maxsize=32)
     def _segmentation_labels(self):
+        """Extract segmentation labels."""
         path_to_seg_labels = Path(self.root) / "semantic_labels" / "segmentations.npz"
         seg_labels = np.load(str(path_to_seg_labels))["segmentation_labels"]
         return torch.from_numpy(seg_labels).type(torch.int64)
 
     def _mesh_filenames(self):
+        """Extract all mesh filenames."""
         path_to_meshes = Path(self.root) / "training" / "registrations"
         return path_to_meshes.glob("*.ply")
 
     def process(self):
+        """Process the raw meshes files and their corresponding segmentation labels into Data objects."""
         data_list = []
         for mesh_filename in sorted(self._mesh_filenames()):
             vertices, faces = load_mesh(mesh_filename)
